@@ -24,4 +24,6 @@ class User :
 position = Position('fdsfsdf')
 department = Department('dfsfsdfs')
 user = User('Maks', position, department)
-print(user.position.name)
+print(user.position.position)
+print(user.department.department)
+print(user.name)
