@@ -15,10 +15,18 @@ def init_db():
         role TEXT CHECK(role IN ('teacher', 'student')) NOT NULL
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY,
+            dateevent date not null,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL
+        )''')
+
     listuser = [
         (1, 'Лукина Екатерина', '1234', 'student'),
         (2, 'Юлия Васильевна', '123456789', 'teacher'),
         (3, '123', '123', 'teacher'),
+        (4, '1234', '1234', 'student')
     ]
 
     for user in listuser:
@@ -48,12 +56,20 @@ def login(entry_login, entry_password):
     fio = entry_login.get()
     password = entry_password.get()
     user = login_user(fio, password)
+    global current_user
     if user:
         global current_user
         current_user = user
-        load_interface()
+        role = current_user[1]
+        if role == "student":
+            load_interface()
+        elif role == "teacher":
+            display_teacher()
+        else:
+            messagebox.showerror("Ошибка", "Неизвестная роль пользователя.")
     else:
         messagebox.showerror("Ошибка", "Неправильные ФИО или пароль")
+
 
 
 def load_interface():
@@ -84,6 +100,99 @@ def load_interface():
 
     root.grid_rowconfigure(1, weight=1)
     root.grid_columnconfigure(0, weight=1)
+
+def get_subjects():
+    conn = sqlite3.connect("Calendar.db")
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT title FROM  events")
+    subjects = [row[0] for row in c.fetchall()]
+    conn.close()
+    return subjects
+
+def display_teacher():
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    year = tk.IntVar(value=2025)
+    month = tk.IntVar(value=5)
+
+    year_label = ttk.Label(root, text="Год:")
+    year_label.grid(row=0, column=0, padx=5, pady=5)
+    year_entry = ttk.Entry(root, textvariable=year, width=6)
+    year_entry.grid(row=0, column=1, padx=5, pady=5)
+
+    month_label = ttk.Label(root, text="Месяц:")
+    month_label.grid(row=0, column=2, padx=5, pady=5)
+    month_entry = ttk.Entry(root, textvariable=month, width=3)
+    month_entry.grid(row=0, column=3, padx=5, pady=5)
+
+    show_button = ttk.Button(root, text="Показать", command=lambda: show_calendar(year.get(), month.get()))
+    show_button.grid(row=0, column=4, padx=5, pady=5)
+
+    l = ttk.Label(root, text="Мероприятие:")
+    l.grid(row=0, column=5, padx=5, pady=5)
+
+    entry_new_subject = tk.Entry(root)
+    entry_new_subject.grid(row=1, column=5, padx=5, pady=5)
+
+    global calendar_text
+    calendar_font = font.Font(family="Courier New", size=25)  # моноширинный шрифт для ровного отображения
+
+    calendar_text = tk.Text(root, wrap="word", font=calendar_font)
+    calendar_text.grid(row=1, column=0, columnspan=5, padx=5, pady=5, sticky='nsew')
+
+    root.grid_rowconfigure(1, weight=1)
+    root.grid_columnconfigure(0, weight=1)
+
+    def add_new_subject():
+        new_ev = entry_new_subject.get().strip()
+        if not new_ev:
+            messagebox.showwarning("Пусто", "Введите название мероприятия")
+            return
+        subjects = get_subjects()
+        if new_ev in subjects:
+            messagebox.showinfo("Инфо", "Такой предмет уже существует")
+        else:
+            # Добавляем предмет в базу данных
+            conn = sqlite3.connect("Calendar.db")
+            c = conn.cursor()
+            c.execute("INSERT INTO title (subject) VALUES (?)", (new_ev,))
+            conn.commit()
+            conn.close()
+            messagebox.showinfo("Ок", f"Мероприятие '{new_ev}' добавлено")
+            update_subjects()  # Обновляем список предметов
+
+
+        tk.Button(win, text="Добавить предмет", command=add_new_subject).pack(pady=5)
+
+        # Оценка студента
+        tk.Label(win, text="Оценка (1-5)").pack()
+        entry_grade = tk.Entry(win)
+        entry_grade.pack()
+
+    def submit_grade():
+        fio = student_var.get()
+        subject = subject_var.get()
+        try:
+            grade = int(entry_grade.get())
+            if not (1 <= grade <= 5):
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Ошибка", "Оценка должна быть числом от 1 до 5")
+            return
+
+        conn = sqlite3.connect("Calendar.db")
+        c = conn.cursor()
+        c.execute("SELECT id FROM users WHERE fio = ? AND role = 'student'", (fio,))
+        stu = c.fetchone()
+        if stu:
+            # Записываем оценку в базу
+            c.execute("INSERT INTO grades (student_id, subject, grade) VALUES (?, ?, ?)", (stu[0], subject, grade))
+            conn.commit()
+            messagebox.showinfo("Ок", "Оценка добавлена")
+        else:
+            messagebox.showerror("Ошибка", "Ученик не найден")
+        conn.close()
 
 def show_calendar(year, month):
     try:
